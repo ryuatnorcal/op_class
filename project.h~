@@ -61,14 +61,10 @@ class OS{
 		void set_index_linek(file new_file);
 		void set_index_size(int file_size);
 
-	// sector
-		void set_sector(sector back,sector next, char free, char filler, char array_index[31]);
-	// dir
-		void set_dir(sector sector_back,dir back_dir,dir next_dir, char array_index[31]);s
-	//file
+	//  file
 		void set_file(new_index,null,null);
 	private:
-		sector *root_sector_ptr;  // this has to truck root dir which is 0 in sector
+		dir *root_dir_ptr;  // this has to truck root dir which is 0 in sector
 		fileIndex *head_block_ptr;
     int free_space_array[256000]; // one sector consume 32 places
 protected:
@@ -85,7 +81,7 @@ protected:
  **********************************************************************/
 OS::OS(){
   for(int i = 0;i<256000;i++){ free_space_array[i] = free_space;  }
-  this->root_sector_ptr = new sector;
+  this->root_dir_ptr = new dir;
 }
 OS::OS(ofstream file){}
 OS::~OS(){} // distructor

@@ -14,22 +14,22 @@ using namespace std;
 int main(int argc, const char * argv[])
 {
   char command[100];
-
+  
   bool exit = false;
   // insert code here...
   cout << "Boot up OS C... v 1.0.0\n";
-/***************************************************************************
- Start up
- **************************************************************************/
+  /***************************************************************************
+   Start up
+   **************************************************************************/
   OS *session = new OS();
-  if (!session->is_factory_reset()) {
-   // ofstream file;
-   // *session = *new OS(file);
-  }
+ // if (!session->is_factory_reset()) {
+    // ofstream file;
+    // *session = *new OS(file);
+ // }
   
-/***************************************************************************
- command line input
-**************************************************************************/
+  /***************************************************************************
+   command line input
+   **************************************************************************/
   while (!exit) {
     cout << USER_HOST;
     cin.getline(command,100);
@@ -40,4 +40,3 @@ int main(int argc, const char * argv[])
   cout << "Bye! \n";
   return 0;
 }
-

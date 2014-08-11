@@ -1,175 +1,192 @@
 
-#include <cstring>
-#include <cstring>
+#include <string>
 using namespace std;
-String strtok_is(string str);
-struct dir;
-struct file{
-  dir *parent_dir;
-  file *back_file;
-  file *next_file;
-	sector *back_to_sector;
-	char contents[504];
+
+struct index;
+
+// 128 byte used
+struct block_dir{
+  int block_number; // store block index
+  block_dir *next;    // always null int this section
+  block_dir *back;    // block number of second dirctor block or null
+  int free;  //block number of dirst unused entry ; mux number of block is 31
+  struct index *dir_entry[31]; // 31 position to hung directory entries
 };
 
-struct fileIndex{
-	int type;
-	string name;
-	file *link;
-	int size;
+// 566 bytes used
+struct data{
+  int parent_blocknumber; // block number of previous block
+  data *back; // previous node of data if needed
+  data *next; // next data node if needed
+  char data[504];// user data bytes
+};
+// 56 bytes used
+struct index{
+  char type;    // F = Free; D = Directory; U = User data
+  string name; // file name; left justified; blank filled
+  int linked;  // blocknumber of first block of file
+  int size;    // number of bytes used in the last block of the file
 };
 
-struct sector{	
-	sector *back_sector;
-	sector *next_sector;
-	char free;
-	char filler;
-	fileIndex *sector_to_fileIndex[31];
-};
-
-struct dir{	
-	dir *back_dir;
-	dir *next_dir;
-	sector *back_to_sector;
-	fileIndex *dir_to_fileIndex[31];
-};
 
 class OS{
-	public:
-		// base functions 
-    OS(); // constructor
-    OS(ofstream file);
-    ~OS(); // distructor
-    bool create(string type, string name);
-    bool open();
-		bool close_file();
-		bool delete_file();
-		bool read();
-		bool write();
-		bool seek();
-
-	// helper functions 
-		bool set_dir_head();
-		bool set_block_head();
-    bool is_factory_reset();
-    bool command_switcher(char *command);
-    bool create_file();
-  // fileIndex
-		void set_index(String file_name,String file_type,file new_file,int file_size);
-		void set_index_name(String file_name);
-		void set_index_type(String type);
-		void set_index_linek(file new_file);
-		void set_index_size(int file_size);
-
-	// sector
-		void set_sector(sector back,sector next, char free, char filler, char array_index[31]);
-	// dir
-		void set_dir(sector sector_back,dir back_dir,dir next_dir, char array_index[31]);s
-	//file
-		void set_file(new_index,null,null);
-	private:
-		sector *root_sector_ptr;  // this has to truck root dir which is 0 in sector
-		fileIndex *head_block_ptr;
-    int free_space_array[256000]; // one sector consume 32 places
-protected:
-  int free_space = 0;
-  int filled_space = 1;
+public:
+  OS(); // constructor
+  bool command_switcher(char *command);
+  bool create(string type, string name);
+  bool open();
+  bool close_file();
+  bool delete_file();
+  bool read();
+  bool write();
+  bool seek();
+  
+private:
+  int free_space_array[256000]; // free space array 1 = used; 0 = free
+  block_dir *blocks[99]; // 100 blocks can create
+  block_dir *head;
+  
+  data *create_user_file();
+  block_dir *create_user_dir();
+  
+  block_dir *next_block(block_dir *cur);
+  block_dir *back_block(block_dir *cur);
+  
+  data *next_data(data *cur);
+  data *back_data(data *cur);
+  
+  bool extends_block(block_dir *cur);
+  bool extends_data(data *cur);
+  block_dir *tail_block;
+  block_dir *head_block;
+  data *tail_data;
+  data *head_data;
+  
+  bool ls(block_dir *cur_block);
+  int finds_open_entry(block_dir *cur);
+  int finds_open_block();
 };
 
-
-
-/**********************************************************************
- Default constructor 
-    - free space array set to F
-    - root node will create
- **********************************************************************/
 OS::OS(){
-  for(int i = 0;i<256000;i++){ free_space_array[i] = free_space;  }
-  this->root_sector_ptr = new sector;
+  this->head = new block_dir;
+  blocks[0] = head;
+  head->block_number = 0;
+  head->next = nullptr;
+  head->back = nullptr;
+  head->free = 1;
+  struct index *temp = new struct index;
+  head->dir_entry[0] = temp;
+  temp->type = 'D';
+  temp->name = "root";
+  temp->linked = 0;
+  temp->size = 128;
 }
-OS::OS(ofstream file){}
-OS::~OS(){} // distructor
 
-/**********************************************************************
- create command 
-  - create type name 
-  - "type" is either U or D, and indicates whether a User data file or directory file is to be created.
-  - "name" is a full file name with dir path sometimg
-  -
- **********************************************************************/
-bool OS::create(string type, string name){
-  if(type[0] == 'U') // creating file
-  { // find new avalable space form dir_to_fileIndex[31] insert file to there find available spaces to choose sector
-    // when you done create then keep open the file
-    String file_name = find_user_file(name);
-    fileIndex *new_index = new fileIndex();
-		file *new_file = new file();
-		new_index->set_index(file_name,type,new_file,size);
-		new_file->set_file(new_index,null,null);
+bool OS::create(string type, string name)
+{
+  data *user_data;
+  block_dir *dir;
+  struct index *new_index = new struct index;
+  new_index->name = name;
+  new_index->type = type[0];
+  int i =0;
+  cout << "type : " << type << " name : "<< name << endl;
+  if(type[0] == 'U'){
+    user_data = create_user_file();
   }
-  else if(type[0] == 'D') // creating directory
-  {
-    
-  }
-  else{
-    cout << "invalid command found ... \n";
-    return false;
+  if(type[0] == 'D'){
+    dir = create_user_dir();
+    i = finds_open_entry(this->head);
+    this->head->dir_entry[i] = new_index;
+    i = finds_open_block();
+    this->blocks[i] = dir;
   }
   
   return true;
 }
-/**********************************************************************
- Default constructor
- - free space array set to F
- - root node will create
- **********************************************************************/
-bool OS::open(){return true;}
-/**********************************************************************
- Default constructor
- - free space array set to F
- - root node will create
- **********************************************************************/
-bool OS::close_file(){return true;}
-/**********************************************************************
- Default constructor
- - free space array set to F
- - root node will create
- **********************************************************************/
-bool OS::delete_file(){return true;}
-/**********************************************************************
- Default constructor
- - free space array set to F
- - root node will create
- **********************************************************************/
-bool OS::read(){return true;}
-/**********************************************************************
- Default constructor
- - free space array set to F
- - root node will create
- **********************************************************************/
-bool OS::write(){return true;}
-/**********************************************************************
- Default constructor
- - free space array set to F
- - root node will create
- **********************************************************************/
-bool OS::seek(){return true;}
+bool OS::open(){  return true;  }
+bool OS::close_file(){  return true;  }
+bool OS::delete_file(){ return true;  }
+bool OS::read(){  return true;  }
+bool OS::write(){  return true;  }
+bool OS::seek(){  return true;  }
 
-	//helper functions
-bool OS::set_dir_head(){return true;}
-bool OS::set_block_head(){return true;}
 
-bool OS::is_factory_reset(){
-  try {
-    fstream savedFile;
-    savedFile.open ("saved_session.txt");
-    savedFile.close();
-  } catch (exception) {    return true;  }
-  return false;
+data *OS::create_user_file()
+{
+  data *data = new struct data;
+  return data;
+}
+
+block_dir *OS::create_user_dir(){
+  block_dir *dir = new struct block_dir;
+  return dir;
+}
+
+block_dir *OS::next_block(block_dir *cur){  return cur->next;  }
+block_dir *OS::back_block(block_dir *cur){  return cur->back; }
+data *OS::next_data(data *cur){ return cur->next; }
+data *OS::back_data(data *cur){ return cur->back; }
+
+bool OS::extends_block(block_dir *cur){
+  block_dir *new_dir = new struct block_dir;
+  if(cur->block_number == 99){
+    delete new_dir;
+    return false;
+  }
+  else
+  { new_dir->block_number = cur->block_number + 1;  }
+  cur->next = new_dir;
+  new_dir->back = cur;
+  new_dir->next = nullptr;
+  new_dir->free = 31;
+  return true;
+}
+
+bool OS::extends_data(data *cur){
+  try{
+    data *new_data = new struct data;
+    new_data->parent_blocknumber = cur->parent_blocknumber;
+    cur->next = new_data;
+    new_data->next = nullptr;
+    new_data->back = cur;
+  }catch(exception e){
+    return false;
+  }
+  return true;
+}
+/*************************************************************************
+ Use recursion function to find out the children dirs
+ ************************************************************************/
+bool OS::ls(block_dir *cur_block){
+  if(cur_block == nullptr){ return false; }
+  data *cur_data;
+  int i =0;
+  while(i<32 && cur_block->dir_entry[i] != nullptr){
+    cout << cur_block->dir_entry[i]->name.c_str();
+    if(cur_block->dir_entry[i]->type == 'D'){
+      cout << '/'<<endl;
+      ls(cur_block->next);
+    }
+    i++;
+  }
+  return true;
+}
+
+int OS::finds_open_block(){
+  int i=0;
+  while(this->blocks[i]!= nullptr){ i++; }
+  return i;
+}
+
+int OS::finds_open_entry(block_dir *cur){
+  int i =0;
+  while (this->head->dir_entry[i]!= nullptr) {  i++;  }
+  return i;
 }
 
 bool OS::command_switcher(char *command){
-  cout << command << endl;
+//  cout << command << endl;
   string op = strtok(command, " .-");
   try{
     if(op == "create" || op == "CREATE"){
@@ -177,6 +194,7 @@ bool OS::command_switcher(char *command){
         string user = strtok(NULL, " .-");
         string path = strtok(NULL, " .-");
         this->create(user, path);
+        this->ls(this->head);
       }
       catch(exception){
         cout << "create command missed arguments .... \n";
@@ -190,30 +208,14 @@ bool OS::command_switcher(char *command){
     if(op == "read" || op == "READ"){ this->read(); return true; }
     if(op == "write" || op == "WRITE"){ this->write();  return true; }
     if(op == "seek" || op == "SEEK"){ this->seek(); return true; }
+    // development purpose
+    if(op == "ls" || op == "LS"){ this->ls(this->head); return true; }
+    
   }
   catch(exception){ cout << "command " << op << " not found ...\n"; }
   return false;
 }
 
-void OS::set_index(String file_name,String file_type,file new_file,int file_size)
-{
-	this->name = file_name;
-	this->type = file_type;
-	this->link = new_file;
-	this->size = file_size;
-}
-void OS::set_index_name(String file_name);{	this->name = file_name; }
-void OS::set_index_type(String type){	this->type = file_type; }
-void OS::set_index_linek(file new_file){	this->link = new_file;	}
-void OS::set_index_size(int file_size){ this->size = file_size; }
 
-String strtok_by_slash(string str){
-	str = strtok(str, "/");
-	return str;
-}
 
-String find_user_file(string str){
-	str = strtok(str,"/");
-	while(str != NULL){	str = strtok(NULL,"/");	}
-	return str;
-}
+

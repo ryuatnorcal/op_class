@@ -86,6 +86,7 @@ bool OS::create(string type, string name)
 {
   data *user_data;
   block_dir *dir;
+  
   struct index *new_index = new struct index;
   new_index->name = name;
   new_index->type = type[0];
@@ -99,7 +100,10 @@ bool OS::create(string type, string name)
     i = finds_open_entry(this->head);
     this->head->dir_entry[i] = new_index;
     i = finds_open_block();
-    this->blocks[i] = dir;
+    if(i<32){    this->blocks[i] = dir; }
+    else{
+      
+    }
   }
   
   return true;
@@ -172,6 +176,7 @@ bool OS::ls(block_dir *cur_block){
   }
   return true;
 }
+
 
 int OS::finds_open_block(){
   int i=0;
